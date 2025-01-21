@@ -25,17 +25,13 @@ app.post('/webhook', async (req, res) => {
 
   // Capturar entrada del usuario
   const userMessage = req.body.SpeechResult || '';
+  const confidence = parseFloat(req.body.Confidence || '0');
 
   try {
-    // Saludo inicial, si el contexto está vacío
+    // Saludo inicial
     if (conversationContext.length === 0) {
       const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ¿Cómo puedo ayudarte hoy?";
       conversationContext.push({ role: 'system', content: greeting });
-
-      twiml.say({
-        voice: 'Polly.Miguel',
-        language: 'es-MX',
-      }, greeting);
 
       const gather = twiml.gather({
         input: 'speech',
@@ -46,7 +42,7 @@ app.post('/webhook', async (req, res) => {
       gather.say({
         voice: 'Polly.Miguel',
         language: 'es-MX',
-      }, 'Estoy escuchando.');
+      }, greeting);
 
       // Enviar respuesta inicial
       res.type('text/xml');
@@ -54,7 +50,7 @@ app.post('/webhook', async (req, res) => {
     }
 
     // Si hay un mensaje del usuario
-    if (userMessage) {
+    if (userMessage && confidence >= 0.5) {
       conversationContext.push({ role: 'user', content: userMessage });
 
       // Generar respuesta con OpenAI
@@ -73,22 +69,7 @@ app.post('/webhook', async (req, res) => {
           language: 'es-MX',
         }, chatGptResponse);
 
-        // Agregar el mensaje final de despedida
-        twiml.say({
-          voice: 'Polly.Miguel',
-          language: 'es-MX',
-        }, 'Gracias por llamar. Hasta luego.');
-
-        // Cerrar la llamada
-        twiml.hangup();
-      } else {
-        // Si OpenAI no genera respuesta
-        twiml.say({
-          voice: 'Polly.Miguel',
-          language: 'es-MX',
-        }, 'No pude procesar tu solicitud. Por favor, intenta de nuevo.');
-
-        // Volver a escuchar
+        // Escuchar de nuevo si es necesario
         const gather = twiml.gather({
           input: 'speech',
           timeout: 10,
@@ -98,14 +79,25 @@ app.post('/webhook', async (req, res) => {
         gather.say({
           voice: 'Polly.Miguel',
           language: 'es-MX',
-        }, 'Estoy escuchando.');
+        }, '¿Hay algo más en lo que pueda ayudarte?');
+
+        res.type('text/xml');
+        return res.send(twiml.toString());
+      } else {
+        // Si OpenAI no genera respuesta
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, 'No pude procesar tu solicitud. Por favor, intenta de nuevo.');
+
+        res.type('text/xml');
+        return res.send(twiml.toString());
       }
     } else {
-      // Si no hubo entrada de voz del usuario
-      twiml.say({
-        voice: 'Polly.Miguel',
-        language: 'es-MX',
-      }, 'No escuché nada. Por favor, intenta de nuevo.');
+      // Si no hubo entrada válida del usuario
+      const fallbackMessage = confidence < 0.5
+        ? 'No entendí claramente lo que dijiste. Por favor, intenta de nuevo.'
+        : 'No escuché nada. Por favor, intenta de nuevo.';
 
       const gather = twiml.gather({
         input: 'speech',
@@ -116,7 +108,10 @@ app.post('/webhook', async (req, res) => {
       gather.say({
         voice: 'Polly.Miguel',
         language: 'es-MX',
-      }, 'Estoy escuchando.');
+      }, fallbackMessage);
+
+      res.type('text/xml');
+      return res.send(twiml.toString());
     }
   } catch (error) {
     console.error('Error:', error);
@@ -124,11 +119,10 @@ app.post('/webhook', async (req, res) => {
       voice: 'Polly.Miguel',
       language: 'es-MX',
     }, 'Hubo un error procesando tu solicitud. Por favor, intenta nuevamente más tarde.');
-  }
 
-  // Enviar respuesta
-  res.type('text/xml');
-  res.send(twiml.toString());
+    res.type('text/xml');
+    res.send(twiml.toString());
+  }
 });
 
 // Exportar la app para que Vercel la use

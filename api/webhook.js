@@ -6,7 +6,7 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 
 // Ruta para manejar POST en /voice-webhook
-app.post('/voice-webhook', (req, res) => {
+app.post('/webhook', (req, res) => {
     const twiml = new VoiceResponse();
     twiml.say('Hola, esta es una prueba de Twilio con Vercel y Node.js.');
     res.type('text/xml');

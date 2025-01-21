@@ -17,6 +17,9 @@ const openai = new OpenAI({
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// Para almacenar el contexto de la conversación
+let conversationContext = [];
+
 app.post('/webhook', async (req, res) => {
   const twiml = new VoiceResponse();
 
@@ -24,12 +27,9 @@ app.post('/webhook', async (req, res) => {
   const userMessage = req.body.SpeechResult || '';
 
   try {
-    // Reiniciar el contexto de la conversación al inicio de cada llamada
-    let conversationContext = [];
-
     // Saludo inicial, si el contexto está vacío
     if (conversationContext.length === 0) {
-      const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ¿Cómo puedo ayudarte hoy?";
+      const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ";
       conversationContext.push({ role: 'system', content: greeting });
 
       twiml.say({
@@ -46,7 +46,7 @@ app.post('/webhook', async (req, res) => {
       gather.say({
         voice: 'Polly.Miguel',
         language: 'es-MX',
-      }, 'Estoy escuchando.');
+      }, '¿Cómo puedo ayudarte?');
 
       // Enviar respuesta inicial
       res.type('text/xml');
@@ -91,14 +91,14 @@ app.post('/webhook', async (req, res) => {
         // Volver a escuchar
         const gather = twiml.gather({
           input: 'speech',
-          timeout: 10,
+          timeout: 4,
           action: '/webhook',
           language: 'es-MX',
         });
         gather.say({
           voice: 'Polly.Miguel',
           language: 'es-MX',
-        }, 'Estoy escuchando.');
+        }, '¿Cómo puedo ayudarte?');
       }
     } else {
       // Si no hubo entrada de voz del usuario
@@ -109,14 +109,14 @@ app.post('/webhook', async (req, res) => {
 
       const gather = twiml.gather({
         input: 'speech',
-        timeout: 10,
+        timeout: 4,
         action: '/webhook',
         language: 'es-MX',
       });
       gather.say({
         voice: 'Polly.Miguel',
         language: 'es-MX',
-      }, 'Estoy escuchando.');
+      }, '¿Cómo puedo ayudarte?');
     }
   } catch (error) {
     console.error('Error:', error);

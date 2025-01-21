@@ -26,10 +26,27 @@ app.post('/webhook', async (req, res) => {
   const userMessage = req.body.SpeechResult || 'No entendí lo que dijiste.';
 
   try {
-    // Crear saludo inicial
-    const greeting = "¡Hola soy Rigo! ¿Cómo puedo ayudarte hoy?";
+    // Crear saludo inicial si el contexto está vacío
     if (conversationContext.length === 0) {
+      const greeting = "¡Hola soy Rigo! ¿Cómo puedo ayudarte hoy?";
       conversationContext.push({ role: 'system', content: greeting });
+      twiml.say({
+        voice: 'Polly.Miguel', // Voz masculina en español (es-MX)
+        language: 'es-MX',
+      }, greeting);
+
+      const gather = twiml.gather({
+        input: 'speech',
+        timeout: 10,
+        action: '/webhook',
+      });
+      gather.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, 'Estoy escuchando.');
+
+      res.type('text/xml');
+      return res.send(twiml.toString());
     }
 
     // Agregar mensaje del usuario al contexto
@@ -49,30 +66,32 @@ app.post('/webhook', async (req, res) => {
 
       // Decir la respuesta al usuario
       twiml.say({
-        voice: 'Polly.Miguel', // Voz masculina en español (es-MX)
+        voice: 'Polly.Miguel',
         language: 'es-MX',
       }, chatGptResponse);
 
-      // Mantener la interacción
-      const gather = twiml.gather({
-        input: 'speech dtmf',
-        timeout: 10,
-        action: '/webhook',
-      });
-      gather.say('¿Hay algo más en lo que te pueda ayudar? Si no, puedes colgar.');
+      twiml.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, 'Gracias por llamar. Hasta luego.');
     } else {
-      twiml.say('No pude procesar tu solicitud. Por favor, intenta de nuevo.');
+      twiml.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, 'No pude procesar tu solicitud. Por favor, intenta de nuevo.');
     }
   } catch (error) {
     console.error('Error:', error);
-    twiml.say('Hubo un error procesando tu solicitud. Por favor, intenta nuevamente más tarde.');
+    twiml.say({
+      voice: 'Polly.Miguel',
+      language: 'es-MX',
+    }, 'Hubo un error procesando tu solicitud. Por favor, intenta nuevamente más tarde.');
   }
 
   // Enviar respuesta
   res.type('text/xml');
   res.send(twiml.toString());
 });
-
 
 // Exportar la app para que Vercel la use
 module.exports = app;

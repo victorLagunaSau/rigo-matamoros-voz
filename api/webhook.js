@@ -29,6 +29,7 @@ app.post('/webhook', async (req, res) => {
   try {
     // Saludo inicial, si el contexto está vacío
     if (conversationContext.length === 0) {
+
       const prompt = `Actúa como un asistente virtual especializado en atención ciudadana para la ciudad de Matamoros, Tamaulipas. 
       Tu nombre es Rigo. Siempre al inicio debes de presentarte como, "Hola soy Rigo" no tienes apellido, y diles que eres una inteligencia artificial de atención ciudadana para Matamoros. 
       Responde de manera clara y precisa preguntas sobre trámites gubernamentales, horarios de oficinas públicas, ubicaciones de dependencias, servicios municipales, y cualquier otra consulta relacionada con la ciudad. 
@@ -116,7 +117,7 @@ app.post('/webhook', async (req, res) => {
       twiml.say({
         voice: 'Polly.Miguel',
         language: 'es-MX',
-      }, '¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ¿Cómo puedo ayudarte hoy?');
+      }, 'No escuché nada. Por favor, intenta de nuevo.');
 
       const gather = twiml.gather({
         input: 'speech',

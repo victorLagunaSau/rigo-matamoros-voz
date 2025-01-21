@@ -9,9 +9,9 @@ dotenv.config();
 const app = express();
 
 // Configuración de Twilio usando process.env
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER;
+// const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+// const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+// const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER;
 
 // Configuración de OpenAI usando process.env
 const openai = new OpenAI({
@@ -29,18 +29,29 @@ app.post('/webhook', async (req, res) => {
   const userMessage = req.body.Body || 'Hola';
 
   try {
+    // Crear el saludo predeterminado que deseas enviar siempre
+    const greeting = "¡Hola! ¿Cómo puedo ayudarte hoy?";
+
     // Llamar a la API de OpenAI (ChatGPT) para generar una respuesta
     const response = await openai.chat.completions.create({
       model: process.env.GPT_MODEL, // Usar el modelo especificado en .env
-      messages: [{ role: 'user', content: userMessage }],
-      assistant: process.env.OPENAI_ASSISTANT_ID // Usar el ID del asistente si es necesario
+      messages: [
+        { role: 'system', content: greeting }, // Agregar el saludo
+        { role: 'user', content: userMessage }
+      ],
+      assistant: process.env.OPENAI_ASSISTANT_ID, // Usar el ID del asistente si es necesario
     });
 
-    // Obtener la respuesta generada por ChatGPT
-    const chatGptResponse = response.choices[0].message.content;
+    // Verificar el contenido de la respuesta de OpenAI
+    console.log('Respuesta de OpenAI:', response);
 
-    // Usar la respuesta de ChatGPT en Twilio
-    twiml.say(chatGptResponse);
+    if (response.choices && response.choices.length > 0) {
+      const chatGptResponse = response.choices[0].message.content;
+      twiml.say(chatGptResponse);
+    } else {
+      console.error('No se recibió una respuesta válida de OpenAI.');
+      twiml.say('No pude entender tu mensaje.');
+    }
   } catch (error) {
     console.error('Error al comunicarse con OpenAI:', error);
     twiml.say('Hubo un error al procesar tu solicitud.');

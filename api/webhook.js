@@ -3,82 +3,71 @@ const { VoiceResponse } = require('twilio').twiml;
 const { OpenAI } = require('openai');
 const dotenv = require('dotenv');
 
-// Cargar las variables de entorno desde el archivo .env
+// Cargar variables de entorno
 dotenv.config();
 
 const app = express();
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Configuración de OpenAI usando process.env
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// Asegúrate de que tu servidor puede manejar solicitudes de formulario
 app.use(express.urlencoded({ extended: true }));
 
-// Para almacenar el contexto de la conversación (debe ser persistente en un almacenamiento adecuado en producción)
-let conversationContext = [];
+// Estado temporal en memoria para mantener el historial de conversaciones
+let conversationState = {};
 
+// Ruta para manejar las solicitudes entrantes
 app.post('/webhook', async (req, res) => {
   const twiml = new VoiceResponse();
-  const userMessage = req.body.Body || 'Hola';
+  const caller = req.body.From; // Número de teléfono del usuario
+  const userMessage = req.body.SpeechResult || ''; // Entrada del usuario por voz
 
-  try {
-    // Crear el saludo predeterminado que deseas enviar siempre
-    const greeting = "¡Hola! ¿Cómo puedo ayudarte hoy?";
-
-    // Agregar el saludo al contexto de la conversación
-    conversationContext.push({ role: 'system', content: greeting });
-
-    // Agregar el mensaje del usuario al contexto de la conversación
-    conversationContext.push({ role: 'user', content: userMessage });
-
-    // Llamar a la API de OpenAI (ChatGPT) para generar una respuesta
-    const response = await openai.chat.completions.create({
-      model: process.env.GPT_MODEL, // Usar el modelo especificado en .env
-      messages: conversationContext,
+  // Si no hay estado, inicializamos el historial de conversación
+  if (!conversationState[caller]) {
+    conversationState[caller] = [];
+    // Primera interacción: Presentación
+    twiml.say({ language: 'es-MX', voice: 'man' }, 'Hola, soy RIGO. ¿En qué puedo ayudarte?');
+    twiml.gather({
+      input: 'speech',
+      timeout: 10, // Tiempo para esperar entrada del usuario
+      language: 'es-MX',
     });
-
-    // Verificar si la respuesta tiene el formato esperado
-    console.log('Respuesta de OpenAI:', response);
-
-    if (response.choices && response.choices.length > 0) {
-      const chatGptResponse = response.choices[0].message.content;
-
-      // Agregar la respuesta de OpenAI al contexto de la conversación
-      conversationContext.push({ role: 'assistant', content: chatGptResponse });
-
-      // Responder a Twilio con la respuesta de ChatGPT, usando voz en español
-      twiml.say({
-        voice: 'Polly.Miguel', // Voz masculina en español (es-MX)
-        language: 'es-MX' // Configuración para español (México)
-      }, chatGptResponse);
-
-      // Mantener la llamada activa y esperar más interacción
-      const gather = twiml.gather({
-        input: 'speech dtmf', // Permite capturar entrada por voz o teclas
-        timeout: 10, // Tiempo para esperar por una respuesta
-        numDigits: 1, // Limitar la cantidad de dígitos esperados
-        action: '/webhook' // Redirige la solicitud para continuar la conversación
-      });
-
-      gather.say('Dime algo más o cuelga si terminaste.');
-
-      // Si no se recibe input, la llamada finalizará
-      twiml.redirect('/webhook'); // Vuelve a llamar al webhook para seguir la conversación
-    } else {
-      console.error('No se recibió una respuesta válida de OpenAI.');
-      twiml.say('No pude entender tu mensaje.');
-    }
-  } catch (error) {
-    console.error('Error al comunicarse con OpenAI:', error.response ? error.response.body : error);
-    twiml.say('Hubo un error al procesar tu solicitud. Inténtalo nuevamente más tarde.');
+    res.type('text/xml');
+    return res.send(twiml.toString());
   }
 
-  // Enviar la respuesta a Twilio
+  // Si ya hay interacción previa
+  try {
+    // Agregar el mensaje del usuario al historial
+    conversationState[caller].push({ role: 'user', content: userMessage });
+
+    // Llamar a OpenAI para obtener respuesta
+    const openaiResponse = await openai.chat.completions.create({
+      model: process.env.GPT_MODEL || 'gpt-4',
+      messages: [
+        { role: 'system', content: 'Eres un asistente llamado RIGO, amable y útil, que responde en español.' },
+        ...conversationState[caller],
+      ],
+    });
+
+    const chatGptResponse = openaiResponse.choices[0].message.content.trim();
+
+    // Agregar la respuesta del asistente al historial
+    conversationState[caller].push({ role: 'assistant', content: chatGptResponse });
+
+    // Responder con la voz masculina en español
+    twiml.say({ language: 'es-MX', voice: 'man' }, chatGptResponse);
+
+    // Permitir que el usuario hable nuevamente
+    twiml.gather({
+      input: 'speech',
+      timeout: 10,
+      language: 'es-MX',
+    });
+  } catch (error) {
+    console.error('Error al procesar la solicitud:', error);
+    twiml.say({ language: 'es-MX', voice: 'man' }, 'Hubo un problema procesando tu solicitud. Inténtalo nuevamente.');
+  }
+
+  // Enviar respuesta a Twilio
   res.type('text/xml');
   res.send(twiml.toString());
 });
-
-// Exportar la app para que Vercel la use
-module.exports = app;

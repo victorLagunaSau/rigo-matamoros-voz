@@ -28,7 +28,7 @@ app.post('/webhook', async (req, res) => {
   try {
     // Crear saludo inicial si el contexto está vacío
     if (conversationContext.length === 0) {
-      const greeting = "¡Hola soy Rigo! ¿Cómo puedo ayudarte hoy?";
+      const greeting = "¡Hola soy Rigo asistente virtual del gobierno de matamoros! ¿Cómo puedo ayudarte hoy?";
       conversationContext.push({ role: 'system', content: greeting });
       twiml.say({
         voice: 'Polly.Miguel', // Voz masculina en español (es-MX)

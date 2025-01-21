@@ -29,7 +29,6 @@ app.post('/webhook', async (req, res) => {
   try {
     // Saludo inicial, si el contexto está vacío
     if (conversationContext.length === 0) {
-
       const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ¿Cómo puedo ayudarte hoy?";
       conversationContext.push({ role: 'system', content: greeting });
 
@@ -40,9 +39,9 @@ app.post('/webhook', async (req, res) => {
 
       const gather = twiml.gather({
         input: 'speech',
-        timeout: 5,
-        action: '/webhook', // Vuelve a llamar al mismo endpoint
-        language: 'es-MX', // Asegurar idioma
+        timeout: 4, // Asegura un tiempo adecuado para que el usuario responda
+        action: '/webhook',
+        language: 'es-MX',
       });
       gather.say({
         voice: 'Polly.Miguel',
@@ -55,7 +54,7 @@ app.post('/webhook', async (req, res) => {
     }
 
     // Si hay un mensaje del usuario
-    if (userMessage) {
+    if (userMessage.trim()) {
       conversationContext.push({ role: 'user', content: userMessage });
 
       // Generar respuesta con OpenAI

@@ -48,8 +48,11 @@ app.post('/webhook', async (req, res) => {
       // Agregar la respuesta de OpenAI al contexto de la conversación
       conversationContext.push({ role: 'assistant', content: chatGptResponse });
 
-      // Responder a Twilio con la respuesta de ChatGPT
-      twiml.say(chatGptResponse);
+      // Responder a Twilio con la respuesta de ChatGPT, usando voz en español
+      twiml.say({
+        voice: 'Polly.Miguel', // Voz masculina en español (es-MX)
+        language: 'es-MX' // Configuración para español (México)
+      }, chatGptResponse);
 
       // Mantener la llamada activa y esperar más interacción
       const gather = twiml.gather({

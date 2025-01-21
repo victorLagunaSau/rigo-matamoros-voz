@@ -29,7 +29,7 @@ app.post('/webhook', async (req, res) => {
   try {
     // Saludo inicial, si el contexto está vacío
     if (conversationContext.length === 0) {
-      const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ¿Cómo puedo ayudarte hoy?";
+      const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ¿Cómo puedo ayudarte?";
       conversationContext.push({ role: 'system', content: greeting });
 
       twiml.say({
@@ -39,8 +39,8 @@ app.post('/webhook', async (req, res) => {
 
       const gather = twiml.gather({
         input: 'speech',
-        timeout: 4, // Asegura un tiempo adecuado para que el usuario responda
-        action: '/webhook',
+        timeout: 10, // Ajusta el tiempo de espera para que el usuario responda
+        action: '/webhook', // Vuelve a llamar al mismo endpoint después de la respuesta
         language: 'es-MX',
       });
       gather.say({
@@ -53,7 +53,7 @@ app.post('/webhook', async (req, res) => {
       return res.send(twiml.toString());
     }
 
-    // Si hay un mensaje del usuario
+    // Si el usuario envía un mensaje
     if (userMessage.trim()) {
       conversationContext.push({ role: 'user', content: userMessage });
 
@@ -88,7 +88,7 @@ app.post('/webhook', async (req, res) => {
           language: 'es-MX',
         }, 'No pude procesar tu solicitud. Por favor, intenta de nuevo.');
 
-        // Volver a escuchar
+        // Volver a escuchar una vez, si no hay entrada
         const gather = twiml.gather({
           input: 'speech',
           timeout: 10,
@@ -107,6 +107,7 @@ app.post('/webhook', async (req, res) => {
         language: 'es-MX',
       }, 'No escuché nada. Por favor, intenta de nuevo.');
 
+      // Solicitamos nuevamente la entrada sin repetir la misma pregunta
       const gather = twiml.gather({
         input: 'speech',
         timeout: 10,

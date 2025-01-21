@@ -13,72 +13,95 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Asegúrate de que tu servidor puede manejar solicitudes de formulario
+// Middleware para manejar formularios y JSON
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-// Para almacenar el contexto de la conversación (debe ser persistente en un almacenamiento adecuado en producción)
+// Para almacenar el contexto de la conversación
 let conversationContext = [];
 
 app.post('/webhook', async (req, res) => {
   const twiml = new VoiceResponse();
 
   // Capturar entrada del usuario
-  const userMessage = req.body.SpeechResult || 'No entendí lo que dijiste.';
+  const userMessage = req.body.SpeechResult || '';
 
   try {
-    // Crear saludo inicial si el contexto está vacío
+    // Saludo inicial
     if (conversationContext.length === 0) {
-      const greeting = "¡Hola soy Rigo asistente virtual del gobierno de matamoros! ¿Cómo puedo ayudarte hoy?";
+      const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ¿Cómo puedo ayudarte hoy?";
       conversationContext.push({ role: 'system', content: greeting });
+
       twiml.say({
-        voice: 'Polly.Miguel', // Voz masculina en español (es-MX)
+        voice: 'Polly.Miguel',
         language: 'es-MX',
       }, greeting);
 
       const gather = twiml.gather({
         input: 'speech',
         timeout: 10,
-        action: '/webhook',
+        action: '/webhook', // Vuelve a llamar al mismo endpoint
+        language: 'es-MX', // Asegurar idioma
       });
       gather.say({
         voice: 'Polly.Miguel',
         language: 'es-MX',
       }, 'Estoy escuchando.');
 
+      // Enviar respuesta inicial
       res.type('text/xml');
       return res.send(twiml.toString());
     }
 
-    // Agregar mensaje del usuario al contexto
-    conversationContext.push({ role: 'user', content: userMessage });
+    // Si hay un mensaje del usuario
+    if (userMessage) {
+      conversationContext.push({ role: 'user', content: userMessage });
 
-    // Generar respuesta con OpenAI
-    const response = await openai.chat.completions.create({
-      model: process.env.GPT_MODEL,
-      messages: conversationContext,
-    });
+      // Generar respuesta con OpenAI
+      const response = await openai.chat.completions.create({
+        model: process.env.GPT_MODEL,
+        messages: conversationContext,
+      });
 
-    if (response.choices && response.choices.length > 0) {
-      const chatGptResponse = response.choices[0].message.content;
+      if (response.choices && response.choices.length > 0) {
+        const chatGptResponse = response.choices[0].message.content;
+        conversationContext.push({ role: 'assistant', content: chatGptResponse });
 
-      // Agregar respuesta de OpenAI al contexto
-      conversationContext.push({ role: 'assistant', content: chatGptResponse });
+        // Responder al usuario
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, chatGptResponse);
 
-      // Decir la respuesta al usuario
-      twiml.say({
-        voice: 'Polly.Miguel',
-        language: 'es-MX',
-      }, chatGptResponse);
-
-      twiml.say({
-        voice: 'Polly.Miguel',
-        language: 'es-MX',
-      }, 'Gracias por llamar. Hasta luego.');
+        // Cerrar la llamada
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, 'Gracias por llamar. Hasta luego.');
+      } else {
+        // Si OpenAI no genera respuesta
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, 'No pude procesar tu solicitud. Por favor, intenta de nuevo.');
+      }
     } else {
+      // Si no hubo entrada de voz del usuario
       twiml.say({
         voice: 'Polly.Miguel',
         language: 'es-MX',
-      }, 'No pude procesar tu solicitud. Por favor, intenta de nuevo.');
+      }, 'No escuché nada. Por favor, intenta de nuevo.');
+
+      const gather = twiml.gather({
+        input: 'speech',
+        timeout: 10,
+        action: '/webhook',
+        language: 'es-MX',
+      });
+      gather.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, 'Estoy escuchando.');
     }
   } catch (error) {
     console.error('Error:', error);

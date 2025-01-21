@@ -56,10 +56,12 @@ app.post('/webhook', async (req, res) => {
 
       // Mantener la llamada activa y esperar más interacción
       const gather = twiml.gather({
-        input: 'speech dtmf',
+        input: 'speech dtmf', // Permite capturar entrada por voz o teclas
         timeout: 10, // Tiempo para esperar por una respuesta
         numDigits: 1, // Limitar la cantidad de dígitos esperados
+        action: '/webhook' // Redirige la solicitud para continuar la conversación
       });
+
       gather.say('Dime algo más o cuelga si terminaste.');
 
       // Si no se recibe input, la llamada finalizará

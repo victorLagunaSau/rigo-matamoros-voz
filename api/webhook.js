@@ -1,3 +1,24 @@
+const express = require('express');
+const { VoiceResponse } = require('twilio').twiml;
+const { OpenAI } = require('openai');
+const dotenv = require('dotenv');
+
+// Cargar las variables de entorno desde el archivo .env
+dotenv.config();
+
+const app = express();
+
+// Configuración de OpenAI usando process.env
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Asegúrate de que tu servidor puede manejar solicitudes de formulario
+app.use(express.urlencoded({ extended: true }));
+
+// Para almacenar el contexto de la conversación (debe ser persistente en un almacenamiento adecuado en producción)
+let conversationContext = [];
+
 app.post('/webhook', async (req, res) => {
   const twiml = new VoiceResponse();
 
@@ -51,3 +72,7 @@ app.post('/webhook', async (req, res) => {
   res.type('text/xml');
   res.send(twiml.toString());
 });
+
+
+// Exportar la app para que Vercel la use
+module.exports = app;

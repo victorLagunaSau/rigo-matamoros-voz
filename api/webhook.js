@@ -27,29 +27,30 @@ app.post('/webhook', async (req, res) => {
   const userMessage = req.body.SpeechResult || '';
 
   try {
-    // Saludo inicial, si el contexto está vacío
+    // Saludo inicial si el contexto está vacío
     if (conversationContext.length === 0) {
-      const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ";
+      const greeting = "¡Hola! Soy Rigo, asistente virtual del gobierno de Matamoros.";
       conversationContext.push({ role: 'system', content: greeting });
 
       twiml.say({
-        voice: 'Polly.Miguel',
+        voice: 'Google.es-MX-Wavenet-D',
         language: 'es-MX',
-      }, greeting);
+      }, `<speak>${greeting} <break time="700ms"/> ¿Cómo puedo ayudarte?</speak>`);
 
       const gather = twiml.gather({
         input: 'speech',
-        timeout: 4,
-        action: '/webhook', // Vuelve a llamar al mismo endpoint
-        language: 'es-MX', // Asegurar idioma
-      });
-      gather.say({
-        voice: 'Polly.Miguel',
+        timeout: 5,
+        action: '/webhook',
         language: 'es-MX',
-      }, '¿Cómo puedo ayudarte?');
+      });
 
-      // Enviar respuesta inicial
+      gather.say({
+        voice: 'Google.es-MX-Wavenet-D',
+        language: 'es-MX',
+      }, `<speak>¿Cómo puedo ayudarte?</speak>`);
+
       res.type('text/xml');
+      console.log("Twilio Response:", twiml.toString());
       return res.send(twiml.toString());
     }
 
@@ -67,69 +68,64 @@ app.post('/webhook', async (req, res) => {
         const chatGptResponse = response.choices[0].message.content;
         conversationContext.push({ role: 'assistant', content: chatGptResponse });
 
-        // Responder al usuario
+        // Responder al usuario con WaveNet
         twiml.say({
-          voice: 'Polly.Miguel',
+          voice: 'Google.es-MX-Wavenet-D',
           language: 'es-MX',
-        }, chatGptResponse);
-
-        // Agregar el mensaje final de despedida
-        twiml.say({
-          voice: 'Polly.Miguel',
-          language: 'es-MX',
-        }, 'Gracias por llamar. Hasta luego.');
+        }, `<speak>${chatGptResponse} <break time="1s"/> Gracias por llamar. Hasta luego.</speak>`);
 
         // Cerrar la llamada
         twiml.hangup();
       } else {
         // Si OpenAI no genera respuesta
         twiml.say({
-          voice: 'Polly.Miguel',
+          voice: 'Google.es-MX-Wavenet-D',
           language: 'es-MX',
-        }, 'No pude procesar tu solicitud. Por favor, intenta de nuevo.');
+        }, `<speak>No pude procesar tu solicitud. <break time="500ms"/> Por favor, intenta de nuevo.</speak>`);
 
-        // Volver a escuchar
         const gather = twiml.gather({
           input: 'speech',
-          timeout: 4,
+          timeout: 5,
           action: '/webhook',
           language: 'es-MX',
         });
         gather.say({
-          voice: 'Polly.Miguel',
+          voice: 'Google.es-MX-Wavenet-D',
           language: 'es-MX',
-        }, '¿Cómo puedo ayudarte?');
+        }, `<speak>¿Cómo puedo ayudarte?</speak>`);
       }
     } else {
       // Si no hubo entrada de voz del usuario
       twiml.say({
-        voice: 'Polly.Miguel',
+        voice: 'Google.es-MX-Wavenet-D',
         language: 'es-MX',
-      }, 'No escuché nada. Por favor, intenta de nuevo.');
+      }, `<speak>No escuché nada. <break time="500ms"/> Por favor, intenta de nuevo.</speak>`);
 
       const gather = twiml.gather({
         input: 'speech',
-        timeout: 4,
+        timeout: 5,
         action: '/webhook',
         language: 'es-MX',
       });
+
       gather.say({
-        voice: 'Polly.Miguel',
+        voice: 'Google.es-MX-Wavenet-D',
         language: 'es-MX',
-      }, '¿Cómo puedo ayudarte?');
+      }, `<speak>¿Cómo puedo ayudarte?</speak>`);
     }
   } catch (error) {
     console.error('Error:', error);
     twiml.say({
-      voice: 'Polly.Miguel',
+      voice: 'Google.es-MX-Wavenet-D',
       language: 'es-MX',
-    }, 'Hubo un error procesando tu solicitud. Por favor, intenta nuevamente más tarde.');
+    }, `<speak>Hubo un error procesando tu solicitud. <break time="500ms"/> Intenta nuevamente más tarde.</speak>`);
   }
 
-  // Enviar respuesta
+  // Enviar respuesta a Twilio
   res.type('text/xml');
+  console.log("Twilio Response:", twiml.toString());
   res.send(twiml.toString());
 });
 
-// Exportar la app para que Vercel la use
+// Exportar la app para Vercel
 module.exports = app;

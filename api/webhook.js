@@ -4,6 +4,7 @@ const { OpenAI } = require('openai');
 const dotenv = require('dotenv');
 const fs = require('fs');
 const path = require('path');
+const cloudinary = require('cloudinary').v2;
 
 // Cargar las variables de entorno desde el archivo .env
 dotenv.config();
@@ -15,15 +16,19 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Configuración de Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 // Middleware para manejar formularios y JSON
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 // Almacenar el contexto de cada llamada
 const conversations = {};
-
-// Ruta para servir archivos de audio
-app.use('/audio', express.static(path.join(__dirname, 'audio')));
 
 app.post('/webhook', async (req, res) => {
   const twiml = new VoiceResponse();
@@ -111,25 +116,31 @@ app.post('/webhook', async (req, res) => {
   res.send(twiml.toString());
 });
 
-// Función para generar audio con OpenAI TTS
+// Función para generar audio con OpenAI TTS y subirlo a Cloudinary
 async function generateTTS(text, callSid) {
-  const audioDir = path.join(__dirname, 'audio');
-  if (!fs.existsSync(audioDir)) {
-    fs.mkdirSync(audioDir);
+  try {
+    const response = await openai.audio.speech.create({
+      model: "tts-1",
+      voice: "alloy",
+      input: text,
+    });
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const filePath = path.join(__dirname, `${callSid}.mp3`);
+    fs.writeFileSync(filePath, buffer);
+
+    const cloudinaryResponse = await cloudinary.uploader.upload(filePath, {
+      resource_type: "video", // Cloudinary maneja audios como videos
+      folder: "twilio_audio",
+    });
+
+    fs.unlinkSync(filePath); // Eliminar el archivo local después de subirlo
+
+    return cloudinaryResponse.secure_url;
+  } catch (error) {
+    console.error("Error generando TTS:", error);
+    return ""; // Devuelve una cadena vacía en caso de error
   }
-
-  const filePath = path.join(audioDir, `${callSid}.mp3`);
-
-  const response = await openai.audio.speech.create({
-    model: "tts-1",
-    voice: "alloy",
-    input: text,
-  });
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(filePath, buffer);
-
-  return `/audio/${callSid}.mp3`;
 }
 
 module.exports = app;

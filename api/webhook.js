@@ -6,40 +6,38 @@ const fs = require('fs');
 const path = require('path');
 const cloudinary = require('cloudinary').v2;
 
-// Cargar las variables de entorno desde el archivo .env
+// Cargar variables de entorno
 dotenv.config();
 
 const app = express();
 
-// Configuración de OpenAI
+// Configurar OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Configuración de Cloudinary
+// Configurar Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Middleware para manejar formularios y JSON
+// Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 // Almacenar el contexto de cada llamada
 const conversations = {};
 
+// Ruta webhook para manejar llamadas de Twilio
 app.post('/webhook', async (req, res) => {
   const twiml = new VoiceResponse();
   const callSid = req.body.CallSid;
   const userMessage = req.body.SpeechResult || '';
 
   if (!conversations[callSid]) {
-    conversations[callSid] = {
-      context: [],
-      iterationCount: 0,
-    };
+    conversations[callSid] = { context: [], iterationCount: 0 };
   }
 
   const conversation = conversations[callSid];
@@ -50,15 +48,19 @@ app.post('/webhook', async (req, res) => {
       conversation.context.push({ role: 'system', content: greeting });
 
       const audioUrl = await generateTTS(greeting, callSid);
-      twiml.play(audioUrl);
 
-      const gather = twiml.gather({
+      if (audioUrl) {
+        twiml.play(audioUrl);
+      } else {
+        twiml.say(greeting);
+      }
+
+      twiml.gather({
         input: 'speech',
         timeout: 5,
         action: '/webhook',
         language: 'es-MX',
       });
-      gather.play(audioUrl);
 
       res.type('text/xml');
       return res.send(twiml.toString());
@@ -78,38 +80,42 @@ app.post('/webhook', async (req, res) => {
         conversation.iterationCount++;
 
         const audioUrl = await generateTTS(chatGptResponse, callSid);
-        twiml.play(audioUrl);
+
+        if (audioUrl) {
+          twiml.play(audioUrl);
+        } else {
+          twiml.say(chatGptResponse);
+        }
 
         if (conversation.iterationCount < 4) {
-          const gather = twiml.gather({
+          twiml.gather({
             input: 'speech',
             timeout: 5,
             action: '/webhook',
             language: 'es-MX',
           });
-          gather.play(audioUrl);
         } else {
           const farewell = "Gracias por llamar. Hasta luego.";
           const farewellAudioUrl = await generateTTS(farewell, callSid);
-          twiml.play(farewellAudioUrl);
+
+          if (farewellAudioUrl) {
+            twiml.play(farewellAudioUrl);
+          } else {
+            twiml.say(farewell);
+          }
+
           twiml.hangup();
           delete conversations[callSid];
         }
       } else {
-        const errorMessage = "No pude procesar tu solicitud. Por favor, intenta de nuevo.";
-        const errorAudioUrl = await generateTTS(errorMessage, callSid);
-        twiml.play(errorAudioUrl);
+        twiml.say("No pude procesar tu solicitud. Por favor, intenta de nuevo.");
       }
     } else {
-      const noAudioMessage = "No escuché nada. Por favor, intenta de nuevo.";
-      const noAudioUrl = await generateTTS(noAudioMessage, callSid);
-      twiml.play(noAudioUrl);
+      twiml.say("No escuché nada. Por favor, intenta de nuevo.");
     }
   } catch (error) {
     console.error('Error:', error);
-    const errorMessage = "Hubo un error procesando tu solicitud. Intenta nuevamente más tarde.";
-    const errorAudioUrl = await generateTTS(errorMessage, callSid);
-    twiml.play(errorAudioUrl);
+    twiml.say("Hubo un error procesando tu solicitud. Intenta nuevamente más tarde.");
   }
 
   res.type('text/xml');
@@ -130,17 +136,24 @@ async function generateTTS(text, callSid) {
     fs.writeFileSync(filePath, buffer);
 
     const cloudinaryResponse = await cloudinary.uploader.upload(filePath, {
-      resource_type: "video", // Cloudinary maneja audios como videos
+      resource_type: "video",
       folder: "twilio_audio",
+      format: "mp3", // Forzar MP3 para evitar problemas
     });
 
-    fs.unlinkSync(filePath); // Eliminar el archivo local después de subirlo
+    fs.unlinkSync(filePath);
 
     return cloudinaryResponse.secure_url;
   } catch (error) {
     console.error("Error generando TTS:", error);
-    return ""; // Devuelve una cadena vacía en caso de error
+    return null;
   }
 }
+
+// Iniciar el servidor en el puerto 3000 o el puerto de entorno
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+});
 
 module.exports = app;

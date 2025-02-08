@@ -2,158 +2,134 @@ const express = require('express');
 const { VoiceResponse } = require('twilio').twiml;
 const { OpenAI } = require('openai');
 const dotenv = require('dotenv');
-const fs = require('fs');
-const path = require('path');
-const cloudinary = require('cloudinary').v2;
 
-// Cargar variables de entorno
+// Cargar las variables de entorno desde el archivo .env
 dotenv.config();
 
 const app = express();
 
-// Configurar OpenAI
+// Configuración de OpenAI usando process.env
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Configurar Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// Middleware
+// Middleware para manejar formularios y JSON
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Almacenar el contexto de cada llamada
-const conversations = {};
+// Para almacenar el contexto de la conversación
+let conversationContext = [];
 
-// Ruta webhook para manejar llamadas de Twilio
 app.post('/webhook', async (req, res) => {
   const twiml = new VoiceResponse();
-  const callSid = req.body.CallSid;
+
+  // Capturar entrada del usuario
   const userMessage = req.body.SpeechResult || '';
 
-  if (!conversations[callSid]) {
-    conversations[callSid] = { context: [], iterationCount: 0 };
-  }
-
-  const conversation = conversations[callSid];
-
   try {
-    if (conversation.context.length === 0) {
-      const greeting = "¡Hola! Soy Rigo, asistente virtual del gobierno de Matamoros.";
-      conversation.context.push({ role: 'system', content: greeting });
+    // Saludo inicial, si el contexto está vacío
+    if (conversationContext.length === 0) {
+      const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ";
+      conversationContext.push({ role: 'system', content: greeting });
 
-      const audioUrl = await generateTTS(greeting, callSid);
-
-      if (audioUrl) {
-        twiml.play(audioUrl);
-      } else {
-        twiml.say(greeting);
-      }
-
-      twiml.gather({
-        input: 'speech',
-        timeout: 5,
-        action: '/webhook',
+      twiml.say({
+        voice: 'Polly.Miguel',
         language: 'es-MX',
-      });
+      }, greeting);
 
+      const gather = twiml.gather({
+        input: 'speech',
+        timeout: 4,
+        action: '/webhook', // Vuelve a llamar al mismo endpoint
+        language: 'es-MX', // Asegurar idioma
+      });
+      gather.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, '¿Cómo puedo ayudarte?');
+
+      // Enviar respuesta inicial
       res.type('text/xml');
       return res.send(twiml.toString());
     }
 
+    // Si hay un mensaje del usuario
     if (userMessage) {
-      conversation.context.push({ role: 'user', content: userMessage });
+      conversationContext.push({ role: 'user', content: userMessage });
 
+      // Generar respuesta con OpenAI
       const response = await openai.chat.completions.create({
         model: process.env.GPT_MODEL,
-        messages: conversation.context,
+        messages: conversationContext,
       });
 
       if (response.choices && response.choices.length > 0) {
         const chatGptResponse = response.choices[0].message.content;
-        conversation.context.push({ role: 'assistant', content: chatGptResponse });
-        conversation.iterationCount++;
+        conversationContext.push({ role: 'assistant', content: chatGptResponse });
 
-        const audioUrl = await generateTTS(chatGptResponse, callSid);
+        // Responder al usuario
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, chatGptResponse);
 
-        if (audioUrl) {
-          twiml.play(audioUrl);
-        } else {
-          twiml.say(chatGptResponse);
-        }
+        // Agregar el mensaje final de despedida
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, 'Gracias por llamar. Hasta luego.');
 
-        if (conversation.iterationCount < 4) {
-          twiml.gather({
-            input: 'speech',
-            timeout: 5,
-            action: '/webhook',
-            language: 'es-MX',
-          });
-        } else {
-          const farewell = "Gracias por llamar. Hasta luego.";
-          const farewellAudioUrl = await generateTTS(farewell, callSid);
-
-          if (farewellAudioUrl) {
-            twiml.play(farewellAudioUrl);
-          } else {
-            twiml.say(farewell);
-          }
-
-          twiml.hangup();
-          delete conversations[callSid];
-        }
+        // Cerrar la llamada
+        twiml.hangup();
       } else {
-        twiml.say("No pude procesar tu solicitud. Por favor, intenta de nuevo.");
+        // Si OpenAI no genera respuesta
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, 'No pude procesar tu solicitud. Por favor, intenta de nuevo.');
+
+        // Volver a escuchar
+        const gather = twiml.gather({
+          input: 'speech',
+          timeout: 4,
+          action: '/webhook',
+          language: 'es-MX',
+        });
+        gather.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, '¿Cómo puedo ayudarte?');
       }
     } else {
-      twiml.say("No escuché nada. Por favor, intenta de nuevo.");
+      // Si no hubo entrada de voz del usuario
+      twiml.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, 'No escuché nada. Por favor, intenta de nuevo.');
+
+      const gather = twiml.gather({
+        input: 'speech',
+        timeout: 4,
+        action: '/webhook',
+        language: 'es-MX',
+      });
+      gather.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, '¿Cómo puedo ayudarte?');
     }
   } catch (error) {
     console.error('Error:', error);
-    twiml.say("Hubo un error procesando tu solicitud. Intenta nuevamente más tarde.");
+    twiml.say({
+      voice: 'Polly.Miguel',
+      language: 'es-MX',
+    }, 'Hubo un error procesando tu solicitud. Por favor, intenta nuevamente más tarde.');
   }
 
+  // Enviar respuesta
   res.type('text/xml');
   res.send(twiml.toString());
 });
 
-// Función para generar audio con OpenAI TTS y subirlo a Cloudinary
-async function generateTTS(text, callSid) {
-  try {
-    const response = await openai.audio.speech.create({
-      model: "tts-1",
-      voice: "alloy",
-      input: text,
-    });
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const filePath = path.join(__dirname, `${callSid}.mp3`);
-    fs.writeFileSync(filePath, buffer);
-
-    const cloudinaryResponse = await cloudinary.uploader.upload(filePath, {
-      resource_type: "video",
-      folder: "twilio_audio",
-      format: "mp3", // Forzar MP3 para evitar problemas
-    });
-
-    fs.unlinkSync(filePath);
-
-    return cloudinaryResponse.secure_url;
-  } catch (error) {
-    console.error("Error generando TTS:", error);
-    return null;
-  }
-}
-
-// Iniciar el servidor en el puerto 3000 o el puerto de entorno
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
-
+// Exportar la app para que Vercel la use
 module.exports = app;

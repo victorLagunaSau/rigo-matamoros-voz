@@ -1,55 +1,135 @@
-require('dotenv').config();
 const express = require('express');
-const twilio = require('twilio');
+const { VoiceResponse } = require('twilio').twiml;
+const { OpenAI } = require('openai');
+const dotenv = require('dotenv');
+
+// Cargar las variables de entorno desde el archivo .env
+dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioNumber = process.env.TWILIO_NUMBER;
-const webhookUrl = process.env.TWILIO_WEBHOOK_URL;
+// Configuración de OpenAI usando process.env
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-const client = new twilio(accountSid, authToken);
-
+// Middleware para manejar formularios y JSON
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Webhook para llamadas entrantes
-app.post('/webhook', (req, res) => {
-    const twiml = new twilio.twiml.VoiceResponse();
-    twiml.say('Hola, esta es una llamada de prueba usando Twilio y VAPI', { language: 'es-MX' });
-    res.type('text/xml');
-    res.send(twiml.toString());
-});
+// Para almacenar el contexto de la conversación
+let conversationContext = [];
 
-// Enviar un mensaje de WhatsApp
-app.post('/send-whatsapp', async (req, res) => {
-    try {
-        const { to, message } = req.body;
-        const response = await client.messages.create({
-            body: message,
-            from: process.env.TWILIO_WHATSAPP_NUMBER,
-            to: `whatsapp:${to}`
-        });
-        res.json({ success: true, messageSid: response.sid });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+app.post('/webhook', async (req, res) => {
+  const twiml = new VoiceResponse();
+
+  // Capturar entrada del usuario
+  const userMessage = req.body.SpeechResult || '';
+
+  try {
+    // Saludo inicial, si el contexto está vacío
+    if (conversationContext.length === 0) {
+      const greeting = "¡Hola soy Rigo, asistente virtual del gobierno de Matamoros! ";
+      conversationContext.push({ role: 'system', content: greeting });
+
+      twiml.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, greeting);
+
+      const gather = twiml.gather({
+        input: 'speech',
+        timeout: 4,
+        action: '/webhook', // Vuelve a llamar al mismo endpoint
+        language: 'es-MX', // Asegurar idioma
+      });
+      gather.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, '¿Cómo puedo ayudarte?');
+
+      // Enviar respuesta inicial
+      res.type('text/xml');
+      return res.send(twiml.toString());
     }
-});
 
-// Realizar una llamada
-app.post('/call', async (req, res) => {
-    try {
-        const { to } = req.body;
-        const call = await client.calls.create({
-            url: webhookUrl,
-            to: to,
-            from: twilioNumber
+    // Si hay un mensaje del usuario
+    if (userMessage) {
+      conversationContext.push({ role: 'user', content: userMessage });
+
+      // Generar respuesta con OpenAI
+      const response = await openai.chat.completions.create({
+        model: process.env.GPT_MODEL,
+        messages: conversationContext,
+      });
+
+      if (response.choices && response.choices.length > 0) {
+        const chatGptResponse = response.choices[0].message.content;
+        conversationContext.push({ role: 'assistant', content: chatGptResponse });
+
+        // Responder al usuario
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, chatGptResponse);
+
+        // Agregar el mensaje final de despedida
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, 'Gracias por llamar. Hasta luego.');
+
+        // Cerrar la llamada
+        twiml.hangup();
+      } else {
+        // Si OpenAI no genera respuesta
+        twiml.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, 'No pude procesar tu solicitud. Por favor, intenta de nuevo.');
+
+        // Volver a escuchar
+        const gather = twiml.gather({
+          input: 'speech',
+          timeout: 4,
+          action: '/webhook',
+          language: 'es-MX',
         });
-        res.json({ success: true, callSid: call.sid });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        gather.say({
+          voice: 'Polly.Miguel',
+          language: 'es-MX',
+        }, '¿Cómo puedo ayudarte?');
+      }
+    } else {
+      // Si no hubo entrada de voz del usuario
+      twiml.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, 'No escuché nada. Por favor, intenta de nuevo.');
+
+      const gather = twiml.gather({
+        input: 'speech',
+        timeout: 4,
+        action: '/webhook',
+        language: 'es-MX',
+      });
+      gather.say({
+        voice: 'Polly.Miguel',
+        language: 'es-MX',
+      }, '¿Cómo puedo ayudarte?');
     }
+  } catch (error) {
+    console.error('Error:', error);
+    twiml.say({
+      voice: 'Polly.Miguel',
+      language: 'es-MX',
+    }, 'Hubo un error procesando tu solicitud. Por favor, intenta nuevamente más tarde.');
+  }
+
+  // Enviar respuesta
+  res.type('text/xml');
+  res.send(twiml.toString());
 });
 
-app.listen(port, () => console.log(`Servidor corriendo en http://localhost:${port}`));
+// Exportar la app para que Vercel la use
+module.exports = app;
